@@ -1,7 +1,6 @@
 import sys
 import os
 import requests as std_requests
-from bs4 import BeautifulSoup
 from supabase import create_client
 from curl_cffi import requests as c_requests
 
@@ -29,15 +28,17 @@ def consultar_binance(trade_type="BUY"):
     }
     try:
         r = c_requests.post(url, json=payload, headers=headers, impersonate="chrome120", timeout=12)
+        print(f"Respuesta Binance ({trade_type}): HTTP Status {r.status_code}", flush=True)
         if r.status_code == 200:
-            data = r.json().get("data", [])
+            res_json = r.json()
+            data = res_json.get("data", [])
             precios = [float(item["adv"]["price"]) for item in data if "adv" in item and item["adv"].get("price")]
-            print(f"Obtenidas {len(precios)} ofertas de {trade_type}.")
+            print(f"Ofertas obtenidas ({trade_type}): {len(precios)}", flush=True)
             return precios
         else:
-            print(f"Binance devolvió HTTP status {r.status_code}")
+            print(f"Cuerpo de respuesta de error: {r.text[:200]}", flush=True)
     except Exception as e:
-        print(f"Error consultando Binance ({trade_type}): {e}")
+        print(f"Excepción de red al consultar Binance ({trade_type}): {e}", flush=True)
     return []
 
 def obtener_bcv():
@@ -50,14 +51,14 @@ def obtener_bcv():
     return 0.0
 
 if __name__ == "__main__":
-    print("Iniciando extracción directa desde Binance...")
+    print("--- Iniciando extracción directa desde Binance ---", flush=True)
     buy = consultar_binance("BUY")
     sell = consultar_binance("SELL")
     bcv = obtener_bcv()
 
     if not buy or not sell:
-        print("No se recibieron datos de Binance (0 anuncios). Se omitió la inserción.")
-        sys.exit(0)
+        print("ERROR CRÍTICO: Binance rechazó la consulta o devolvió 0 ofertas (Bloqueo de IP de GitHub Actions).", flush=True)
+        sys.exit(1)
 
     tick_data = {
         "p2p_buy_avg": round(sum(buy) / len(buy), 4),
@@ -70,8 +71,8 @@ if __name__ == "__main__":
 
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        supabase.table("p2p_ticks_binance").insert(tick_data).execute()
-        print("Registrado en p2p_ticks_binance con éxito.")
+        res = supabase.table("p2p_ticks_binance").insert(tick_data).execute()
+        print("¡ÉXITO! Datos insertados en Supabase:", res.data, flush=True)
     except Exception as e:
-        print(f"Error insertando en Supabase: {e}")
+        print(f"Error insertando en Supabase: {e}", flush=True)
         sys.exit(1)
