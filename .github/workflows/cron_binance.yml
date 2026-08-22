@@ -15,6 +15,7 @@ jobs:
           python-version: '3.10'
       - run: pip install requests beautifulsoup4 supabase curl-cffi
       - env:
+          PYTHONUNBUFFERED: "1"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python collector_binance.py
