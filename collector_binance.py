@@ -35,12 +35,16 @@ def consultar_binance_directo(trade_type="BUY"):
 
     try:
         r = requests.post(url, json=payload, headers=headers, impersonate="chrome120", timeout=12)
+        print(f"[Binance {trade_type}] HTTP Status: {r.status_code}", flush=True)
         if r.status_code == 200:
             data = r.json().get("data", [])
             precios = [float(item["adv"]["price"]) for item in data if "adv" in item and item["adv"].get("price")]
+            print(f"[Binance {trade_type}] Ofertas obtenidas: {len(precios)}", flush=True)
             return precios
+        else:
+            print(f"[Binance {trade_type}] Respuesta inesperada: {r.text[:200]}", flush=True)
     except Exception as e:
-        print(f"Error consultando Binance P2P ({trade_type}): {e}")
+        print(f"[Binance {trade_type}] Error de conexión: {e}", flush=True)
         
     return []
 
@@ -58,17 +62,18 @@ def obtener_bcv():
         val_text = soup.find('div', id='dolar').find('strong').text.strip().replace(',', '.')
         return round(float(val_text), 4)
     except Exception as e:
-        print(f"Error BCV: {e}")
+        print(f"Error BCV: {e}", flush=True)
         return 0.0
 
 if __name__ == "__main__":
+    print("=== Ejecutando Collector Binance Directo ===", flush=True)
     precios_buy = consultar_binance_directo("BUY")
     precios_sell = consultar_binance_directo("SELL")
     bcv = obtener_bcv()
 
     if not precios_buy or not precios_sell:
-        print("Binance devolvió 0 anuncios. Omitiendo inserción en DB.")
-        sys.exit(0)
+        print("❌ ERROR: Binance devolvió 0 ofertas o bloqueó la consulta desde GitHub Actions.", flush=True)
+        sys.exit(1)
 
     buy_avg = sum(precios_buy) / len(precios_buy)
     buy_min = min(precios_buy)
@@ -89,7 +94,7 @@ if __name__ == "__main__":
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         res = supabase.table("p2p_ticks_binance").insert(tick_data).execute()
-        print(f"Éxito: {sample_size} muestras insertadas en p2p_ticks_binance. Respuesta: {res.data}")
+        print(f"✅ ÉXITO: Datos insertados en p2p_ticks_binance -> {res.data}", flush=True)
     except Exception as e:
-        print(f"Error insertando en Supabase: {e}")
+        print(f"❌ ERROR Supabase: {e}", flush=True)
         sys.exit(1)
