@@ -8,7 +8,6 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 def obtener_p2p():
-    """Obtiene cotización Binance P2P de forma estable vía CriptoYa."""
     url = "https://criptoya.com/api/binancep2p/usdt/ves/100"
     try:
         r = requests.get(url, timeout=10)
@@ -27,7 +26,6 @@ def obtener_p2p():
     return 0.0, 0.0, 0.0, 0.0, 0
 
 def obtener_bcv():
-    """Obtiene la tasa oficial del Banco Central de Venezuela."""
     try:
         r = requests.get("https://ve.dolarapi.com/v1/dolares/oficial", timeout=5)
         if r.status_code == 200:
@@ -48,9 +46,8 @@ if __name__ == "__main__":
     buy_avg, buy_min, sell_avg, sell_max, sample_size = obtener_p2p()
     bcv = obtener_bcv()
 
-    # Protección: Si no hubo captura de datos, sale de forma limpia sin romper el runner
     if sample_size == 0 or buy_avg == 0:
-        print("No se obtuvieron muestras válidas de P2P. Omitiendo inserción en DB.")
+        print("No se obtuvieron muestras válidas de P2P. Omitiendo inserción.")
         sys.exit(0)
 
     tick_data = {
