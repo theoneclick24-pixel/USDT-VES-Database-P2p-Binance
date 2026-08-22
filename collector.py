@@ -4,8 +4,9 @@ import requests
 from bs4 import BeautifulSoup
 from supabase import create_client
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+# .strip().rstrip('/') elimina espacios y la barra final '/' si la hubiere
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip('/')
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "").strip()
 
 def obtener_p2p():
     url = "https://criptoya.com/api/binancep2p/usdt/ves/100"
