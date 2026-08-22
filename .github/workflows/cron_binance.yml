@@ -9,12 +9,21 @@ jobs:
   collect-data:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Clonar Repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - run: pip install requests beautifulsoup4 supabase curl-cffi
-      - env:
+
+      - name: Instalar Librerías
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 supabase curl-cffi
+
+      - name: Ejecutar Extractor Binance
+        env:
           PYTHONUNBUFFERED: "1"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
