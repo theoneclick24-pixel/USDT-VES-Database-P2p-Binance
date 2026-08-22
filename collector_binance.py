@@ -1,5 +1,6 @@
 import sys
 import os
+from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 from supabase import create_client
 from curl_cffi import requests
@@ -76,6 +77,7 @@ if __name__ == "__main__":
     sample_size = len(precios_buy) + len(precios_sell)
 
     tick_data = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "p2p_buy_avg": round(buy_avg, 4),
         "p2p_buy_min": round(buy_min, 4),
         "p2p_sell_avg": round(sell_avg, 4),
@@ -86,8 +88,8 @@ if __name__ == "__main__":
 
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        supabase.table("p2p_ticks_binance").insert(tick_data).execute()
-        print(f"Éxito: {sample_size} muestras recolectadas e insertadas en p2p_ticks_binance.")
+        res = supabase.table("p2p_ticks_binance").insert(tick_data).execute()
+        print(f"Éxito: {sample_size} muestras insertadas en p2p_ticks_binance. Respuesta: {res.data}")
     except Exception as e:
         print(f"Error insertando en Supabase: {e}")
         sys.exit(1)
