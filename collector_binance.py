@@ -39,12 +39,12 @@ def consultar_binance_directo(trade_type="BUY"):
         if r.status_code == 200:
             data = r.json().get("data", [])
             precios = [float(item["adv"]["price"]) for item in data if "adv" in item and item["adv"].get("price")]
-            print(f"[Binance {trade_type}] Ofertas obtenidas: {len(precios)}", flush=True)
+            print(f"[Binance {trade_type}] Anuncios obtenidos: {len(precios)}", flush=True)
             return precios
         else:
-            print(f"[Binance {trade_type}] Respuesta inesperada: {r.text[:200]}", flush=True)
+            print(f"[Binance {trade_type}] Error HTTP {r.status_code}: {r.text[:200]}", flush=True)
     except Exception as e:
-        print(f"[Binance {trade_type}] Error de conexión: {e}", flush=True)
+        print(f"[Binance {trade_type}] Excepción de red: {e}", flush=True)
         
     return []
 
@@ -66,14 +66,14 @@ def obtener_bcv():
         return 0.0
 
 if __name__ == "__main__":
-    print("=== Ejecutando Collector Binance Directo ===", flush=True)
+    print("=== Iniciando Extracción Binance Directo ===", flush=True)
     precios_buy = consultar_binance_directo("BUY")
     precios_sell = consultar_binance_directo("SELL")
     bcv = obtener_bcv()
 
     if not precios_buy or not precios_sell:
-        print("❌ ERROR: Binance devolvió 0 ofertas o bloqueó la consulta desde GitHub Actions.", flush=True)
-        sys.exit(1)
+        print("❌ FALLO: Binance devolvió 0 anuncios. Bloqueo de consulta activo.", flush=True)
+        sys.exit(1)  # Marca ROJO en GitHub Actions para detectar el error real
 
     buy_avg = sum(precios_buy) / len(precios_buy)
     buy_min = min(precios_buy)
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         res = supabase.table("p2p_ticks_binance").insert(tick_data).execute()
-        print(f"✅ ÉXITO: Datos insertados en p2p_ticks_binance -> {res.data}", flush=True)
+        print(f"✅ ÉXITO: Datos guardados en p2p_ticks_binance -> {res.data}", flush=True)
     except Exception as e:
         print(f"❌ ERROR Supabase: {e}", flush=True)
         sys.exit(1)
