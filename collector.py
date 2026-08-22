@@ -1,30 +1,16 @@
-import os
+import sys
+import time
 import requests
 from bs4 import BeautifulSoup
 from supabase import create_client
+import os
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-def obtener_proxies():
-    """Obtiene una lista actualizada de proxies HTTP públicos."""
-    try:
-        url = "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=3000&country=all&ssl=all&anonymity=all"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            return [p.strip() for p in r.text.strip().split("\r\n") if p.strip()]
-    except Exception:
-        pass
-    return []
-
-def consultar_binance_p2p(trade_type, lista_proxies):
-    """Consulta las primeras 10 órdenes de Binance P2P rotando proxies."""
+def obtener_p2p(trade_type="BUY"):
     url = "https://p2p.binance.com/bapi/c2c/v1/friendly/c2c/ad/search"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
+    headers = {"User-Agent": "Mozilla/5.0", "Content-Type": "application/json"}
     payload = {
         "asset": "USDT",
         "fiat": "VES",
@@ -36,48 +22,38 @@ def consultar_binance_p2p(trade_type, lista_proxies):
         "tradeType": trade_type
     }
 
-    # Intentar primero conexión directa
     try:
-        r = requests.post(url, json=payload, headers=headers, timeout=4)
-        if r.status_code == 200 and len(r.json().get("data", [])) > 0:
-            return [float(ad["adv"]["price"]) for ad in r.json()["data"]]
-    except Exception:
-        pass
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"Error fetching P2P ({trade_type}): {e}")
+        return 0.0, 0.0, 0  # avg, extreme, sample_size
 
-    # Rotar lista de proxies en caso de bloqueo
-    for proxy in lista_proxies[:20]:
+    data = response.json().get("data", [])
+    prices = []
+    for item in data:
         try:
-            px = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
-            r = requests.post(url, json=payload, headers=headers, proxies=px, timeout=4)
-            if r.status_code == 200:
-                data = r.json().get("data", [])
-                if data:
-                    return [float(ad["adv"]["price"]) for ad in data]
+            if "adv" in item and item["adv"].get("price") is not None:
+                prices.append(float(item["adv"]["price"]))
         except Exception:
+            # skip malformed items
             continue
 
-    return []
+    sample_size = len(prices)
+    if sample_size == 0:
+        print(f"No P2P prices found for {trade_type}.")
+        return 0.0, 0.0, 0
 
-def obtener_p2p():
-    proxies = obtener_proxies()
-    
-    precios_buy = consultar_binance_p2p("BUY", proxies)
-    precios_sell = consultar_binance_p2p("SELL", proxies)
+    avg_price = sum(prices) / sample_size
+    extreme_price = min(prices) if trade_type == "BUY" else max(prices)
+    return round(avg_price, 4), round(extreme_price, 4), sample_size
 
-    if precios_buy and precios_sell:
-        buy_avg = sum(precios_buy) / len(precios_buy)
-        buy_min = min(precios_buy)
-        sell_avg = sum(precios_sell) / len(precios_sell)
-        sell_max = max(precios_sell)
-        return buy_avg, buy_min, sell_avg, sell_max
-
-    return 0.0, 0.0, 0.0, 0.0
-
+# obtener_bcv remains largely the same (optional: add similar guards)
 def obtener_bcv():
     try:
         r = requests.get("https://ve.dolarapi.com/v1/dolares/oficial", timeout=5)
         if r.status_code == 200:
-            return float(r.json().get("promedio", 0))
+            return float(r.json().get("promedio"))
     except Exception:
         pass
 
@@ -91,21 +67,31 @@ def obtener_bcv():
         return 0.0
 
 if __name__ == "__main__":
-    buy_avg, buy_min, sell_avg, sell_max = obtener_p2p()
+    buy_avg, buy_min, buy_sample = obtener_p2p("BUY")
+    sell_avg, sell_max, sell_sample = obtener_p2p("SELL")
     bcv = obtener_bcv()
 
-    if buy_avg > 0 and sell_avg > 0:
-        tick_data = {
-            "p2p_buy_avg": round(buy_avg, 4),
-            "p2p_buy_min": round(buy_min, 4),
-            "p2p_sell_avg": round(sell_avg, 4),
-            "p2p_sell_max": round(sell_max, 4),
-            "bcv_rate": round(bcv, 4),
-            "sample_size": 10
-        }
+    total_sample = buy_sample + sell_sample
 
+    if total_sample == 0:
+        print("No P2P samples collected for BUY or SELL. Skipping DB insert.")
+        sys.exit(0)  # exit cleanly (not an error state)
+
+    tick_data = {
+        "p2p_buy_avg": buy_avg,
+        "p2p_buy_min": buy_min,
+        "p2p_sell_avg": sell_avg,
+        "p2p_sell_max": sell_max,
+        "bcv_rate": bcv,
+        "sample_size": total_sample
+    }
+
+    try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         supabase.table("p2p_raw_ticks").insert(tick_data).execute()
-        print("Muestras de Binance P2P registradas con éxito en Supabase.")
-    else:
-        print("Error: No se lograron obtener las órdenes de Binance P2P.")
+        print("Tick registrado con éxito.")
+    except Exception as e:
+        # don't crash the whole job; log the error
+        print(f"Error inserting to Supabase: {e}")
+        # optionally exit non-zero if you want the workflow to fail
+        # sys.exit(1)
